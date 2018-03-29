@@ -42,16 +42,28 @@ int main(int argc, char **argv) {
             seed = atoi(optarg);
             // your code here
             // error handling
+            if (seed <= 0) {
+            printf("seed is a positive number\n");
+            return 1;
+            }
             break;
           case 1:
             array_size = atoi(optarg);
             // your code here
             // error handling
+            if (array_size <= 0) {
+            printf("array_size is a positive number\n");
+            return 1;
+            }
             break;
           case 2:
             pnum = atoi(optarg);
             // your code here
             // error handling
+            if (pnum <= 0) {
+            printf("pnum is a positive number\n");
+            return 1;
+            }
             break;
           case 3:
             with_files = true;
@@ -88,23 +100,41 @@ int main(int argc, char **argv) {
   GenerateArray(array, array_size, seed);
   int active_child_processes = 0;
 
+  int p1[2];
+  int p2[2];
+  pipe(p1);
+  pipe(p2);
   struct timeval start_time;
   gettimeofday(&start_time, NULL);
-
+  int size = array_size/pnum;
+  
+  FILE *fp=NULL;
+  fp=fopen("MinMax.txt", "a+");
+  if(!fp) {printf("not opned"); return 1;}
+  
   for (int i = 0; i < pnum; i++) {
     pid_t child_pid = fork();
     if (child_pid >= 0) {
       // successful fork
       active_child_processes += 1;
       if (child_pid == 0) {
+        struct MinMax min_max;
         // child process
-
+        if(i==pnum-1){ 
+        min_max = GetMinMax(array,i*size, array_size);
+        }
+        else{
+        min_max = GetMinMax(array,i*size, (i+1)*size);
+        }
         // parallel somehow
 
         if (with_files) {
-          // use files here
+            fprintf(fp, "%d %d\n",min_max.min,min_max.max);
+            
         } else {
           // use pipe here
+          write(p1[1],&min_max.min,sizeof(int));
+          write(p2[1],&min_max.max,sizeof(int));
         }
         return 0;
       }
@@ -114,9 +144,15 @@ int main(int argc, char **argv) {
       return 1;
     }
   }
-
+  fclose(fp);
+  int stat;
   while (active_child_processes > 0) {
     // your code here
+    wait(&stat);
+    if (!WIFEXITED(stat)){
+        printf("Exit status: %d\n", WEXITSTATUS(stat));
+        return 1;
+    }
 
     active_child_processes -= 1;
   }
@@ -124,21 +160,38 @@ int main(int argc, char **argv) {
   struct MinMax min_max;
   min_max.min = INT_MAX;
   min_max.max = INT_MIN;
-
+  FILE *f = fopen("MinMax.txt","r");
+  if(!f){
+      printf("Error open MinMax.txt\n");
+      return 1;
+  }
+  else{
   for (int i = 0; i < pnum; i++) {
     int min = INT_MAX;
     int max = INT_MIN;
-
+    int minl = INT_MAX;
+    int maxl = INT_MIN;
     if (with_files) {
-      // read from files
-    } else {
+        // read from files
+        if(fscanf(f,"%d %d\n",&minl,&maxl)){
+        min = minl<min?minl:min;
+        max = maxl>max?maxl:max;
+        }
+    }
+     else {
       // read from pipes
+      read(p1[0],&minl,sizeof(int));
+      read(p2[0],&maxl,sizeof(int));
+      min = minl<min?minl:min;
+      max = maxl>max?maxl:max;
     }
 
     if (min < min_max.min) min_max.min = min;
     if (max > min_max.max) min_max.max = max;
   }
-
+  }
+  fclose(f);
+  remove("MinMax.txt");
   struct timeval finish_time;
   gettimeofday(&finish_time, NULL);
 
